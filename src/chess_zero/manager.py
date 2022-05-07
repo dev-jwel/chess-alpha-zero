@@ -11,7 +11,7 @@ from .config import Config
 
 logger = getLogger(__name__)
 
-CMD_LIST = ['self', 'opt', 'eval', 'sl', 'uci']
+CMD_LIST = ['self', 'opt', 'eval', 'sl', 'uci', 'gentle_uci']
 
 
 def create_parser():
@@ -51,7 +51,7 @@ def start():
     args = parser.parse_args()
     config_type = args.type
 
-    if args.cmd == 'uci':
+    if args.cmd in ['uci', 'gentle_uci']:
         disable(999999) # plz don't interfere with uci
 
     config = Config(config_type=config_type)
@@ -74,3 +74,6 @@ def start():
     elif args.cmd == 'uci':
         from .play_game import uci
         return uci.start(config)
+    elif args.cmd == 'gentle_uci':
+        from .play_game import gentle_uci
+        return gentle_uci.start(config)

@@ -2,6 +2,7 @@
 This encapsulates all of the functionality related to actually playing the game itself, not just
 making / training predictions.
 """
+import sys
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from logging import getLogger
@@ -98,7 +99,7 @@ class ChessPlayer:
         self.tree = defaultdict(VisitStats)
 
     def deboog(self, env):
-        print(env.testeval())
+        print(env.testeval(), file=sys.stderr)
 
         state = state_key(env)
         my_visit_stats = self.tree[state]
@@ -114,7 +115,8 @@ class ChessPlayer:
                   f'n: {s[0]:3.0f} '
                   f'w: {s[1]:7.3f} '
                   f'q: {s[2]:7.3f} '
-                  f'p: {s[3]:7.5f}')
+                  f'p: {s[3]:7.5f}',
+                  file=sys.stderr)
 
     def action(self, env, can_stop = True) -> str:
         """
@@ -284,7 +286,7 @@ class ChessPlayer:
         best_a = None
         if is_root_node:
             noise = np.random.dirichlet([dir_alpha] * len(my_visitstats.a))
-        
+
         i = 0
         for action, a_s in my_visitstats.a.items():
             p_ = a_s.p
@@ -360,6 +362,148 @@ class ChessPlayer:
         for move in self.moves:  # add this game winner result to all past moves.
             move += [z]
 
+class GentleChessPlayer(ChessPlayer):
+    def __init__(
+        self,
+        config: Config,
+        pipes=None,
+        play_config=None,
+        dummy=False,
+        min_target=-0.2,
+        max_target=1,
+        be_gentle_at=15,
+        decay=0.03
+    ):
+        super().__init__(config, pipes, play_config, dummy)
+        self.min_target = min_target
+        self.max_target = max_target
+        self.be_gentle_at = be_gentle_at
+        self.decay = decay
+
+        self.root_lock = Lock()
+        self.root_Q = 0
+        self.root_W = 0
+        self.root_N = 0
+
+    def search_my_move(self, env: ChessEnv, is_root_node=False, is_my_turn=True) -> float:
+        """
+        Q, V is value for this Player(always white).
+        P is value for the player of next_player (black or white)
+
+        This method searches for possible moves, adds them to a search tree, and eventually returns the
+        best move that was found during the search.
+
+        :param ChessEnv env: environment in which to search for the move
+        :param boolean is_root_node: whether this is the root node of the search.
+        :param boolean is_my_turn: whether this node is player's node.
+        :return float: value of the move. This is calculated by getting a prediction
+            from the value network.
+        """
+
+        if env.done:
+            if env.winner == Winner.draw:
+                return 0
+            # assert env.whitewon != env.white_to_move # side to move can't be winner!
+            return -1
+
+        state = state_key(env)
+
+        with self.node_lock[state]:
+            if state not in self.tree:
+                leaf_p, leaf_v = self.expand_and_evaluate(env)
+                self.tree[state].p = leaf_p
+                return leaf_v # I'm returning everything from the POV of side to move
+
+            # SELECT STEP
+            if is_my_turn and env.num_halfmoves > self.be_gentle_at:
+                action_t = self.select_gentle_action_q_and_u(env, is_root_node, self.root_Q)
+            else:
+                action_t = self.select_action_q_and_u(env, is_root_node)
+
+            virtual_loss = self.play_config.virtual_loss
+
+            my_visit_stats = self.tree[state]
+            my_stats = my_visit_stats.a[action_t]
+
+            my_visit_stats.sum_n += virtual_loss
+            my_stats.n += virtual_loss
+            my_stats.w += -virtual_loss
+            my_stats.q = my_stats.w / my_stats.n
+
+        env.step(action_t.uci())
+        leaf_v = self.search_my_move(env, is_my_turn=(not is_my_turn))  # next move from enemy POV
+        leaf_v = -leaf_v
+
+        # BACKUP STEP
+        # on returning search path
+        # update: N, W, Q
+        with self.node_lock[state]:
+            my_visit_stats.sum_n += -virtual_loss + 1
+            my_stats.n += -virtual_loss + 1
+            my_stats.w += virtual_loss + leaf_v
+            my_stats.q = my_stats.w / my_stats.n
+            with self.root_lock:
+                self.root_N += 1
+                self.root_W += leaf_v
+                self.root_Q = self.root_W / self.root_N
+
+        return leaf_v
+
+
+    def select_gentle_action_q_and_u(self, env, is_root_node, root_Q) -> chess.Move:
+        """
+        Picks the next action to explore using the adjusted MCTS algorithm.
+
+        Picks based on the action which minimizes the gap between action value
+        |ActionStats.q - target_Q| and maximizes exploration bonus.
+        The value target_Q is a target Q value for the action,
+        target_Q = clip(root_Q - decay, min_target, max_target).
+        Overall formular is argmax( - |ActionStats.q - target_Q| + exploration_bonus).
+
+        :param Environment env: env to look for the next moves within
+        :param is_root_node: whether this is for the root node of the MCTS search.
+        :param is_my_turn: whether this node is player's node.
+        :param root_Q: root Q value
+        :return chess.Move: the move to explore
+        """
+
+        # this method is called with state locked
+        state = state_key(env)
+
+        my_visitstats = self.tree[state]
+
+        if my_visitstats.p is not None: #push p to edges
+            tot_p = 1e-8
+            for mov in env.board.legal_moves:
+                mov_p = my_visitstats.p[self.move_lookup[mov]]
+                my_visitstats.a[mov].p = mov_p
+                tot_p += mov_p
+            for a_s in my_visitstats.a.values():
+                a_s.p /= tot_p
+            my_visitstats.p = None
+
+        xx_ = np.sqrt(my_visitstats.sum_n + 1)  # sqrt of sum(N(s, b); for all b)
+
+        e = self.play_config.noise_eps
+        c_puct = self.play_config.c_puct
+        dir_alpha = self.play_config.dirichlet_alpha
+
+        best_s = -999
+        best_a = None
+        if is_root_node:
+            noise = np.random.dirichlet([dir_alpha] * len(my_visitstats.a))
+
+        target_Q = np.clip(root_Q-self.decay, self.min_target, self.max_target)
+        for i, (action, a_s) in enumerate(my_visitstats.a.items()):
+            p_ = a_s.p
+            if is_root_node:
+                p_ = (1-e) * p_ + e * noise[i]
+            b = -np.abs(a_s.q - target_Q) + c_puct * p_ * xx_ / (1 + a_s.n)
+            if b > best_s:
+                best_s = b
+                best_a = action
+
+        return best_a
 
 def state_key(env: ChessEnv) -> str:
     """
