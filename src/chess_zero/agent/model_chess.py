@@ -8,12 +8,12 @@ import json
 import os
 from logging import getLogger
 
-from keras.engine.topology import Input
+from keras import Input
 from keras.engine.training import Model
 from keras.layers.convolutional import Conv2D
 from keras.layers.core import Activation, Dense, Flatten
 from keras.layers.merge import Add
-from keras.layers.normalization import BatchNormalization
+from keras.layers import BatchNormalization
 from keras.regularizers import l2
 
 from chess_zero.agent.api_chess import ChessModelAPI
@@ -72,7 +72,7 @@ class ChessModel:
             x = self._build_residual_block(x, i + 1)
 
         res_out = x
-        
+
         # for policy output
         x = Conv2D(filters=2, kernel_size=1, data_format="channels_first", use_bias=False, kernel_regularizer=l2(mc.l2_reg),
                     name="policy_conv-1-2")(res_out)
@@ -98,12 +98,12 @@ class ChessModel:
         in_x = x
         res_name = "res"+str(index)
         x = Conv2D(filters=mc.cnn_filter_num, kernel_size=mc.cnn_filter_size, padding="same",
-                   data_format="channels_first", use_bias=False, kernel_regularizer=l2(mc.l2_reg), 
+                   data_format="channels_first", use_bias=False, kernel_regularizer=l2(mc.l2_reg),
                    name=res_name+"_conv1-"+str(mc.cnn_filter_size)+"-"+str(mc.cnn_filter_num))(x)
         x = BatchNormalization(axis=1, name=res_name+"_batchnorm1")(x)
         x = Activation("relu",name=res_name+"_relu1")(x)
         x = Conv2D(filters=mc.cnn_filter_num, kernel_size=mc.cnn_filter_size, padding="same",
-                   data_format="channels_first", use_bias=False, kernel_regularizer=l2(mc.l2_reg), 
+                   data_format="channels_first", use_bias=False, kernel_regularizer=l2(mc.l2_reg),
                    name=res_name+"_conv2-"+str(mc.cnn_filter_size)+"-"+str(mc.cnn_filter_num))(x)
         x = BatchNormalization(axis=1, name="res"+str(index)+"_batchnorm2")(x)
         x = Add(name=res_name+"_add")([in_x, x])
@@ -144,7 +144,7 @@ class ChessModel:
             with open(config_path, "rt") as f:
                 self.model = Model.from_config(json.load(f))
             self.model.load_weights(weight_path)
-            self.model._make_predict_function()
+            self.model.make_predict_function()
             self.digest = self.fetch_digest(weight_path)
             logger.debug(f"loaded model digest = {self.digest}")
             return True
