@@ -437,15 +437,16 @@ class GentleChessPlayer(ChessPlayer):
         # BACKUP STEP
         # on returning search path
         # update: N, W, Q
+        if is_root_node:
+            with self.root_lock:
+                self.root_N += 1
+                self.root_W += leaf_v
+                self.root_Q = self.root_W / self.root_N
         with self.node_lock[state]:
             my_visit_stats.sum_n += -virtual_loss + 1
             my_stats.n += -virtual_loss + 1
             my_stats.w += virtual_loss + leaf_v
             my_stats.q = my_stats.w / my_stats.n
-            with self.root_lock:
-                self.root_N += 1
-                self.root_W += leaf_v
-                self.root_Q = self.root_W / self.root_N
 
         return leaf_v
 
