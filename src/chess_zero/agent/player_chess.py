@@ -120,7 +120,7 @@ class ChessPlayer:
                   f'p: {s[3]:7.5f}',
                   file=sys.stderr)
 
-    def action(self, env, can_stop=True, return_confidence=False):
+    def action(self, env, can_stop=True, return_all=False):
         """
         Figures out the next best move
         within the specified environment and returns a string describing the action to take.
@@ -128,8 +128,8 @@ class ChessPlayer:
         :param ChessEnv env: environment in which to figure out the action
         :param boolean can_stop: whether we are allowed to take no action (return None)
         :param boolean return_confidence: whether return confidence value
-        :return: None if no action should be taken (indicating a resign). Otherwise, returns a string
-            indicating the action to take in uci format. Its policy and confidence value also returned if required.
+        :return: None if no action should be taken (indicating a resign). Otherwise, returns the prediction result.
+            Default return value is uci format string, but action index, probabilities, confidence if return_all is True.
         """
         self.reset()
 
@@ -149,7 +149,7 @@ class ChessPlayer:
                 confidence = np.zeros(self.labels_n)
                 for a, a_s in self.tree[state_key(env)].a:
                     confidence[a] = a_s.q
-                return self.config.labels[my_action], p, confidence
+                return my_action, p, confidence
             else:
                 return self.config.labels[my_action]
 
