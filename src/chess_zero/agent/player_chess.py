@@ -120,7 +120,7 @@ class ChessPlayer:
                   f'p: {s[3]:7.5f}',
                   file=sys.stderr)
 
-    def action(self, env, can_stop=True, return_confidence=False) -> Union[Tuple[str, float], str, None]:
+    def action(self, env, can_stop=True, return_confidence=False):
         """
         Figures out the next best move
         within the specified environment and returns a string describing the action to take.
@@ -129,14 +129,15 @@ class ChessPlayer:
         :param boolean can_stop: whether we are allowed to take no action (return None)
         :param boolean return_confidence: whether return confidence value
         :return: None if no action should be taken (indicating a resign). Otherwise, returns a string
-            indicating the action to take in uci format and its confidence value if required.
+            indicating the action to take in uci format. Its policy and confidence value also returned if required.
         """
         self.reset()
 
         # for tl in range(self.play_config.thinking_loop):
         root_value, naked_value = self.search_moves(env)
         policy = self.calc_policy(env)
-        my_action = int(np.random.choice(range(self.labels_n), p = self.apply_temperature(policy, env.num_halfmoves)))
+        p = self.apply_temperature(policy, env.num_halfmoves)
+        my_action = int(np.random.choice(range(self.labels_n), p=p))
 
         if can_stop and self.play_config.resign_threshold is not None and \
                         root_value <= self.play_config.resign_threshold \
@@ -145,7 +146,8 @@ class ChessPlayer:
         else:
             self.moves.append([env.observation, list(policy)])
             if return_confidence:
-                return self.config.labels[my_action], policy[my_action]
+                confidence = self.tree[state_key(env)].a[my_action].q
+                return self.config.labels[my_action], p, confidence
             else:
                 return self.config.labels[my_action]
 
