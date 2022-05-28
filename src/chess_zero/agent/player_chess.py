@@ -14,6 +14,8 @@ import numpy as np
 from chess_zero.config import Config
 from chess_zero.env.chess_env import ChessEnv, Winner
 
+from typing import Union
+
 logger = getLogger(__name__)
 
 
@@ -118,15 +120,16 @@ class ChessPlayer:
                   f'p: {s[3]:7.5f}',
                   file=sys.stderr)
 
-    def action(self, env, can_stop = True) -> str:
+    def action(self, env, can_stop=True, return_confidence=False) -> Union[(str, float), str, None]:
         """
         Figures out the next best move
         within the specified environment and returns a string describing the action to take.
 
         :param ChessEnv env: environment in which to figure out the action
         :param boolean can_stop: whether we are allowed to take no action (return None)
+        :param boolean return_confidence: whether return confidence value
         :return: None if no action should be taken (indicating a resign). Otherwise, returns a string
-            indicating the action to take in uci format
+            indicating the action to take in uci format and its confidence value if required.
         """
         self.reset()
 
@@ -138,11 +141,13 @@ class ChessPlayer:
         if can_stop and self.play_config.resign_threshold is not None and \
                         root_value <= self.play_config.resign_threshold \
                         and env.num_halfmoves > self.play_config.min_resign_turn:
-            # noinspection PyTypeChecker
             return None
         else:
             self.moves.append([env.observation, list(policy)])
-            return self.config.labels[my_action]
+            if return_confidence:
+                return self.config.labels[my_action], policy[my_action]
+            else:
+                return self.config.labels[my_action]
 
     def search_moves(self, env) -> (float, float):
         """
