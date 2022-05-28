@@ -62,6 +62,9 @@ class ChessEnv:
         self.board = chess.Board(board)
         self.winner = None
         self.resigned = False
+        self.num_halfmoves = self.board.fullmove_number * 2 - 2
+        if self.board.turn == chess.BLACK:
+            self.num_halfmoves += 1
         return self
 
     @property
@@ -293,7 +296,7 @@ def aux_planes(fen):
 # a7 b7 .. h7
 # .. .. .. ..
 # a1 b1 .. h1
-# 
+#
 # FEN string is like this:
 #  0  1 ..  7
 #  8  9 .. 15
