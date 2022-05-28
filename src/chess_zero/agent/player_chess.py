@@ -146,7 +146,9 @@ class ChessPlayer:
         else:
             self.moves.append([env.observation, list(policy)])
             if return_confidence:
-                confidence = self.tree[state_key(env)].a[my_action].q
+                confidence = np.zeros(self.labels_n)
+                for a, a_s in self.tree[state_key(env)].a:
+                    confidence[a] = a_s.q
                 return self.config.labels[my_action], p, confidence
             else:
                 return self.config.labels[my_action]
