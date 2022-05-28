@@ -14,7 +14,7 @@ import numpy as np
 from chess_zero.config import Config
 from chess_zero.env.chess_env import ChessEnv, Winner
 
-from typing import Union
+from typing import Union, Tuple
 
 logger = getLogger(__name__)
 
@@ -120,7 +120,7 @@ class ChessPlayer:
                   f'p: {s[3]:7.5f}',
                   file=sys.stderr)
 
-    def action(self, env, can_stop=True, return_confidence=False) -> Union[(str, float), str, None]:
+    def action(self, env, can_stop=True, return_confidence=False) -> Union[Tuple[str, float], str, None]:
         """
         Figures out the next best move
         within the specified environment and returns a string describing the action to take.
