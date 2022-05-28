@@ -127,7 +127,7 @@ class ChessPlayer:
 
         :param ChessEnv env: environment in which to figure out the action
         :param boolean can_stop: whether we are allowed to take no action (return None)
-        :param boolean return_confidence: whether return confidence value
+        :param boolean return_all: whether return confidence value
         :return: None if no action should be taken (indicating a resign). Otherwise, returns the prediction result.
             Default return value is uci format string, but action index, probabilities, confidence if return_all is True.
         """
@@ -145,10 +145,10 @@ class ChessPlayer:
             return None
         else:
             self.moves.append([env.observation, list(policy)])
-            if return_confidence:
+            if return_all:
                 confidence = np.zeros(self.labels_n)
-                for a, a_s in self.tree[state_key(env)].a:
-                    confidence[a] = a_s.q
+                for a, a_s in self.tree[state_key(env)].a.items():
+                    confidence[self.move_lookup[a]] = a_s.q
                 return my_action, p, confidence
             else:
                 return self.config.labels[my_action]
